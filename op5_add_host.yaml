@@ -1,0 +1,72 @@
+---
+- hosts: localhost
+  connection: local
+  gather_facts: no
+
+  vars:
+    op5_srv: <op5-server>
+    host: <host-to-be-monitored>
+    op5_hostgroup:
+      - <op5-hostgroup1>
+      - <op5-hostgroup2>
+
+  vars_prompt:
+
+    - name: op5_user
+      prompt: OP5 username
+      private: no
+
+    - name: op5_pass
+      prompt: OP5 password
+
+  tasks:
+
+    - name: Check if host exist in OP5
+      uri:
+        url: "https://{{ op5_srv }}/api/config/host/{{ host }}"
+        method: GET
+        user: "{{ op5_user }}"
+        password: "{{ op5_pass }}"
+        status_code: 200,404
+        validate_certs: no
+        body_format: json
+        timeout: 10
+      register: host_status
+
+    - name: Create host in OP5
+      uri:
+        url: "https://{{ op5_srv }}/api/config/host"
+        method: POST
+        user: "{{ op5_user }}"
+        password: "{{ op5_pass }}"
+        body_format: json
+        validate_certs: no
+        status_code: 201, 404
+        timeout: 10
+        body:
+          file_id: "etc/hosts.cfg"
+          host_name: "{{ host }}"
+          hostgroups: "{{ op5_hostgroup }}"
+          max_check_attempts: 3
+          notification_interval: 5
+          notification_options: "[d,r]"
+          notification_period: "24x7"
+          template: "default-host-template"
+      when:
+        - host_status.status == 404
+      register: change_status
+      changed_when: change_status.status == 201
+      notify: Save changes
+
+  handlers:
+
+    - name: Save changes
+      uri:
+        url: "https://{{ op5_srv }}/api/config/change"
+        method: POST
+        user: "{{ op5_user }}"
+        password: "{{ op5_pass }}"
+        status_code: 200,404
+        validate_certs: no
+        body_format: json
+        timeout: 10
